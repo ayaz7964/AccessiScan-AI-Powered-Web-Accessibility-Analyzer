@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 
@@ -62,8 +62,6 @@ const ProgressCircle = ({
     </div>
   );
 };
-
-import { useState } from "react";
 
 export default function LandingPage() {
   const router = useRouter();
