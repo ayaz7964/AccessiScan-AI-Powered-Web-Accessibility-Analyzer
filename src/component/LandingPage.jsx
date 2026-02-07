@@ -78,14 +78,35 @@ const ProgressCircle = ({
 
 import { useState } from "react";
 // import ProgressCircle from "./ProgressCircle";
+import puppeteer from "puppeteer";
+import axe from "axe-core";
 
 export default function Page() {
   const [val, setVal] = useState(10);
   const [isOpen, setOpen] = useState(false);
+  const [url , setUrl] = useState()
+  const [vol , setVilation] = useState()
+//  async function scanWebsite(url) {
+//   const browser = await puppeteer.launch({ headless: true });
+//   const page = await browser.newPage();
 
+//   await page.goto(url, { waitUntil: "networkidle2" });
+
+//   // Inject axe-core into page
+//   await page.addScriptTag({ content: axe.source });
+
+//   const results = await page.evaluate(async () => {
+//     return await window.axe.run();
+//   });
+
+//   await browser.close();
+//   return results.violations;
+// }
 
   // 520380 , 3A025B bg-[#220135] 
   return (
+
+
     <div className="p-20 space-y-4 bg-gray-200 w-full min-h-screen  flex justify-center ">
 
       {/* <input 
@@ -107,8 +128,10 @@ export default function Page() {
 
         <div className="w-[90%] bg-white h-40 m-10 rounded-[10px] flex   ">
 
-          <input type="text" className="w-[70%] border-2  m-10 rounded-[20px] h-10 p-5 " placeholder="Enter your URL https//www.example.com" />
-          <button className=" h-10 mt-10 mr-10  w-32  hover:bg-blue-900  rounded-[10px] text-white bg-blue-600 text-center " onClick={() => { setOpen(true) }}>Start Test </button>
+          <input type="text" className="w-[70%] border-2  m-10 rounded-[20px] h-10 p-5 "
+           value = {url} placeholder="Enter your URL https//www.example.com" onChange={(e)=>setUrl(e.target.value)} />
+          <button className=" h-10 mt-10 mr-10  w-32  hover:bg-blue-900  rounded-[10px] text-white bg-blue-600 text-center "
+           onClick={() => { setOpen(true)  }}>Start Test </button>
         </div>
         {
           isOpen && (
@@ -131,6 +154,7 @@ export default function Page() {
                   
                 </div>
               </div>
+              
             </div>
           )
         }
@@ -164,6 +188,9 @@ export default function Page() {
         
       </motion.div> */}
       {/* </div> */}
+         {/* {vol} */}
     </div>
+
+ 
   );
 }
