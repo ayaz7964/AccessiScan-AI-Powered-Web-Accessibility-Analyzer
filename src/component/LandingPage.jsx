@@ -76,8 +76,22 @@ export default function LandingPage() {
   const [scanStatus, setScanStatus] = useState("");
 
   const handleStartScan = async () => {
-    if (!url) {
-      setError("Please enter a valid URL");
+    if (!url || !url.trim()) {
+      setError("Enter a URL to scan");
+      return;
+    }
+
+    let validUrl = url.trim();
+
+    // Validate and fix URL format
+    if (!validUrl.startsWith("http://") && !validUrl.startsWith("https://")) {
+      validUrl = "https://" + validUrl;
+    }
+
+    // Basic URL pattern validation
+    const urlPattern = /^https?:\/\/.+\..+/;
+    if (!urlPattern.test(validUrl)) {
+      setError("Invalid URL format");
       return;
     }
 
@@ -97,7 +111,7 @@ export default function LandingPage() {
       const response = await fetch("/api/scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url })
+        body: JSON.stringify({ url: validUrl })
       });
 
       clearInterval(progressInterval);
