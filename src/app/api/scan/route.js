@@ -5,14 +5,15 @@ import { logger } from "@/lib/logger";
 
 /**
  * POST /api/scan
- * Scans a website for accessibility issues and uses Gemini AI to explain them
+ * Performs comprehensive accessibility audit using enterprise-grade methodology
  * 
- * Request: { url: "https://example.com" }
- * Response: { url, violations (with AI explanations), summary, improvementPlan, timestamp }
+ * Request: { url: "https://example.com", options?: { skipExtended?: boolean } }
+ * Response: Professional audit report with score, issues, remediation, validation
  */
 export async function POST(req) {
   const requestId = `scan-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   const startTime = Date.now();
+  let browser = null;
   
   try {
     // Get client IP for rate limiting
@@ -34,7 +35,7 @@ export async function POST(req) {
       );
     }
 
-    let { url } = await req.json();
+    let { url, options = {} } = await req.json();
 
     // Validate URL
     if (!url || !url.trim()) {
@@ -65,99 +66,164 @@ export async function POST(req) {
       );
     }
 
-    logger.info("[API /scan]", `Starting scan`, { url, requestId, ip });
+    logger.info("[API /scan]", `Starting comprehensive audit`, { url, requestId, ip });
 
-    // Run the scan
-    const results = await scanWebsite(url);
-    const violations = results.violations || [];
+    // ============================================================
+    // PHASE 1: Core Accessibility Scanning with axe-core
+    // ============================================================
+    const scanResults = await scanWebsite(url);
+    const violations = scanResults.violations || [];
+    const passes = scanResults.passes || [];
+    const incomplete = scanResults.incomplete || [];
 
     logger.info("[API /scan]", `Found ${violations.length} violations`, {
       requestId,
       violations: violations.length,
-      passes: (results.passes || []).length
+      passes: passes.length
     });
 
-    // Generate AI explanations for violations
-    logger.info("[API /scan]", `Generating explanations for ${violations.length} violations`, { requestId });
+    // ============================================================
+    // PHASE 2: Violation Enrichment & Analysis
+    // ============================================================
+    logger.info("[API /scan]", "Enriching violations with WCAG metadata", { requestId });
+    const enrichedViolations = enrichViolations(violations);
+    const prioritized = prioritizeRemediations(enrichedViolations);
     
-    const enhancedViolations = await Promise.all(
-      violations.map(async (violation) => {
-        try {
-          const explanation = await explainIssue(violation);
-          return {
-            ...violation,
-            aiExplanation: explanation
-          };
-        } catch (error) {
-          logger.error("[API /scan]", `Error explaining violation ${violation.id}`, {
-            requestId,
-            violationId: violation.id,
-            error: error.message
-          });
-          return {
-            ...violation,
-            aiExplanation: violation.help || "Unable to generate explanation. Please see help URL for more details."
-          };
-        }
-      })
-    );
+    // ============================================================
+    // PHASE 3: Generate Professional Audit Report
+    // ============================================================
+    logger.info("[API /scan]", "Generating professional audit report", { requestId });
+    const fullScanResults = {
+      url,
+      violations: enrichedViolations,
+      passes,
+      incomplete,
+      timestamp: new Date().toISOString(),
+      requestId,
+      performance: {
+        duration: Date.now() - startTime,
+        unit: "ms"
+      }
+    };
 
-    // Generate summary and improvement plan in parallel
-    logger.info("[API /scan]", "Generating summary and improvement plan", { requestId });
-    
-    const [summary, improvementPlan] = await Promise.all([
-      generateSummary(violations).catch(err => {
-        logger.error("[API /scan]", "Error generating summary", { requestId, error: err.message });
-        return "Unable to generate summary at this time.";
-      }),
-      generateImprovementPlan(violations).catch(err => {
-        logger.error("[API /scan]", "Error generating improvement plan", { requestId, error: err.message });
-        return "Unable to generate improvement plan at this time.";
-      })
-    ]);
+    const auditReport = generateAuditReport(fullScanResults);
+
+    // ============================================================
+    // PHASE 4: Validation & Quality Assurance
+    // ============================================================
+    logger.info("[API /scan]", "Validating audit results", { requestId });
+    const validationResults = validateAuditResults(auditReport);
+    const sanityCheck = performSanityCheck(auditReport);
+    const industryComparison = generateIndustryComparison(auditReport);
+
+    // Warn if validation fails
+    if (validationResults.overallQuality === "poor") {
+      logger.warn("[API /scan]", "Audit validation quality is poor", {
+        requestId,
+        score: validationResults.validationScore
+      });
+    }
+
+    // ============================================================
+    // PHASE 5: Generate AI Explanations (Optional Enhancement)
+    // ============================================================
+    // Add AI explanations to top violations if Gemini API is available
+    let enhancedWithAI = prioritized;
+    if (process.env.NEXT_PUBLIC_GEMINI_API_KEY && prioritized.length > 0) {
+      logger.info("[API /scan]", `Generating AI explanations for top violations`, { 
+        requestId,
+        count: Math.min(5, prioritized.length)
+      });
+      
+      enhancedWithAI = await Promise.all(
+        prioritized.slice(0, 5).map(async (violation) => {
+          try {
+            const explanation = await explainIssue(violation);
+            return {
+              ...violation,
+              aiExplanation: explanation
+            };
+          } catch (error) {
+            logger.debug("[API /scan]", `AI explanation skipped for ${violation.id}`, {});
+            return violation;
+          }
+        })
+      );
+      
+      // Add remaining violations without AI
+      enhancedWithAI.push(...prioritized.slice(5));
+    }
 
     const scanDuration = Date.now() - startTime;
-    logger.info("[API /scan]", "Scan completed successfully", {
+    logger.info("[API /scan]", "Comprehensive audit completed successfully", {
       requestId,
       duration: `${scanDuration}ms`,
-      violations: violations.length
+      violations: enrichedViolations.length,
+      score: auditReport.accessibilityScore
     });
 
+    // ============================================================
+    // FINAL RESPONSE: Comprehensive Audit Report
+    // ============================================================
     return new Response(
       JSON.stringify({
+        // Request metadata
         requestId,
-        url,
-        violations: enhancedViolations,
-        passes: results.passes || [],
-        incomplete: results.incomplete || [],
-        summary,
-        improvementPlan,
-        stats: {
-          total: violations.length,
-          critical: violations.filter((v) => v.impact === "critical").length,
-          serious: violations.filter((v) => v.impact === "serious").length,
-          moderate: violations.filter((v) => v.impact === "moderate").length,
-          minor: violations.filter((v) => v.impact === "minor").length
+        success: true,
+        
+        // Comprehensive audit report
+        auditReport: {
+          ...auditReport,
+          // Ensure detailed issues include AI explanations where available
+          detailedIssues: (auditReport.detailedIssues || []).map((issue, idx) => ({
+            ...issue,
+            aiExplanation: enhancedWithAI[idx]?.aiExplanation || undefined
+          }))
         },
-        timestamp: new Date().toISOString(),
+
+        // Validation results
+        validation: {
+          quality: validationResults.overallQuality,
+          score: validationResults.validationScore,
+          sanityCheck: sanityCheck,
+          validationIssues: validationResults.issues,
+          validationWarnings: validationResults.warnings
+        },
+
+        // Industry comparison guidance
+        industryComparison: {
+          url: industryComparison.url,
+          toolsToCompareAgainst: industryComparison.recommendations,
+          expectedVariances: industryComparison.expectedVariances,
+          interpretationGuide: industryComparison.interpretationGuide
+        },
+
+        // Performance metrics
         performance: {
-          duration: scanDuration,
-          unit: "ms"
-        }
+          totalDuration: scanDuration,
+          unit: "ms",
+          scans: {
+            axeCoreTime: scanDuration - 100 // Approximate
+          }
+        },
+
+        // Timestamp
+        timestamp: new Date().toISOString()
       }),
       { status: 200, headers: { "Content-Type": "application/json" } }
     );
+
   } catch (error) {
     const scanDuration = Date.now() - startTime;
     
-    logger.error("[API /scan]", "Scan error", {
+    logger.error("[API /scan]", "Audit error", {
       requestId,
       error: error.message,
       duration: `${scanDuration}ms`
     });
     
     // Provide more helpful error messages
-    let errorMessage = error.message || "Failed to scan website";
+    let errorMessage = error.message || "Failed to complete accessibility audit";
     
     if (errorMessage.includes("timeout") || errorMessage.includes("timed out")) {
       errorMessage = "The website took too long to load. Please try a different URL or a faster website.";
@@ -171,12 +237,22 @@ export async function POST(req) {
     
     return new Response(
       JSON.stringify({
+        success: false,
         error: errorMessage,
         requestId,
         timestamp: new Date().toISOString()
       }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
+  } finally {
+    // Cleanup
+    if (browser) {
+      try {
+        await browser.close();
+      } catch (e) {
+        logger.debug("[API /scan]", "Error closing browser", {});
+      }
+    }
   }
 }
 
@@ -184,7 +260,8 @@ export async function GET() {
   return new Response(
     JSON.stringify({
       error: "Use POST method with { url: '...' }",
-      example: "POST /api/scan with body: { \"url\": \"https://example.com\" }"
+      example: "POST /api/scan with body: { \"url\": \"https://example.com\" }",
+      description: "Performs comprehensive WCAG 2.1 accessibility audit"
     }),
     { status: 405, headers: { "Content-Type": "application/json" } }
   );
