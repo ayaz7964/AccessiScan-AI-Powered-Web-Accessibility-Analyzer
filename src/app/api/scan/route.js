@@ -3,6 +3,116 @@ import { explainIssue, generateSummary, generateImprovementPlan } from "@/lib/ge
 import { checkRateLimit } from "@/lib/rateLimiter";
 import { logger } from "@/lib/logger";
 
+// --- Helper implementations (previously missing) ---
+
+/**
+ * Enrich raw axe-core style violations with lightweight WCAG metadata
+ * Returns an array of enriched violation objects used downstream.
+ */
+function enrichViolations(violations = []) {
+  try {
+    return violations.map((v, idx) => ({
+      id: v.id || v.ruleId || `violation-${idx}`,
+      description: v.description || v.help || v.message || "",
+      impact: v.impact || v.severity || "moderate",
+      nodes: v.nodes || v.targets || [],
+      wcag: (v.tags || []).filter((t) => /^wcag|^WCAG/i.test(t) || /^wcag/.test(t)),
+      raw: v
+    }));
+  } catch (e) {
+    logger.debug("[API /scan]", "enrichViolations error", { error: e.message });
+    return violations.map((v, idx) => ({ id: v.id || `violation-${idx}`, raw: v }));
+  }
+}
+
+/**
+ * Prioritize remediations by impact/severity. Returns sorted array.
+ */
+function prioritizeRemediations(enriched = []) {
+  const weight = { critical: 5, serious: 4, high: 4, moderate: 3, low: 2, minor: 1 };
+  return enriched.slice().sort((a, b) => {
+    const wa = weight[(a.impact || "").toLowerCase()] || 2;
+    const wb = weight[(b.impact || "").toLowerCase()] || 2;
+    return wb - wa;
+  });
+}
+
+/**
+ * Generate a basic audit report object expected by the route logic.
+ */
+function generateAuditReport(fullScanResults = {}) {
+  const violations = fullScanResults.violations || [];
+  const totalViolations = violations.length;
+
+  // Simple scoring heuristic: penalize per-violation but clamp 0-100
+  const accessibilityScore = Math.max(0, Math.min(100, 100 - totalViolations * 8));
+
+  const detailedIssues = (violations || []).map((v, idx) => ({
+    id: v.id || `issue-${idx}`,
+    description: v.description || v.help || (v.raw && v.raw.description) || "",
+    impact: v.impact || "moderate",
+    wcag: v.wcag || [],
+    nodes: v.nodes || [],
+    remediation: (typeof generateImprovementPlan === "function") ? generateImprovementPlan(v) : null,
+    raw: v.raw || v
+  }));
+
+  const summary = (typeof generateSummary === "function")
+    ? generateSummary({ url: fullScanResults.url, violations: detailedIssues })
+    : `Found ${totalViolations} accessibility issue(s).`;
+
+  return {
+    url: fullScanResults.url,
+    accessibilityScore,
+    detailedIssues,
+    summary,
+    meta: {
+      scannedAt: fullScanResults.timestamp || new Date().toISOString(),
+      requestId: fullScanResults.requestId
+    }
+  };
+}
+
+/**
+ * Lightweight validation of audit report. Returns score, issues, warnings.
+ */
+function validateAuditResults(auditReport = {}) {
+  const issues = auditReport.detailedIssues || [];
+  const validationScore = Math.max(0, Math.min(100, auditReport.accessibilityScore - Math.floor(issues.length / 2)));
+  const overallQuality = validationScore >= 80 ? "good" : validationScore >= 50 ? "fair" : "poor";
+
+  const warnings = [];
+  if (!auditReport || typeof auditReport.accessibilityScore !== "number") warnings.push("Missing score");
+
+  return {
+    overallQuality,
+    validationScore,
+    issues: issues.map((i) => ({ id: i.id, impact: i.impact })),
+    warnings
+  };
+}
+
+/**
+ * Simple sanity check to ensure report shape and score are plausible.
+ */
+function performSanityCheck(auditReport = {}) {
+  const passed = auditReport && typeof auditReport.accessibilityScore === "number" && auditReport.accessibilityScore >= 0 && auditReport.accessibilityScore <= 100;
+  return { passed, notes: passed ? [] : ["accessibilityScore missing or out of range"] };
+}
+
+/**
+ * Return a small industry comparison object with recommendations.
+ */
+function generateIndustryComparison(auditReport = {}) {
+  return {
+    url: auditReport.url || "",
+    recommendations: ["axe-core", "WAVE", "Lighthouse"],
+    expectedVariances: "Different tools may surface additional or fewer issues; use multiple tools for coverage.",
+    interpretationGuide: "Higher score = better accessibility. Focus on 'critical/serious' items first."
+  };
+}
+
+
 /**
  * POST /api/scan
  * Performs comprehensive accessibility audit using enterprise-grade methodology
